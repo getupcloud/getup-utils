@@ -1,38 +1,41 @@
 Custom Metrics for CloudWatch
 =============================
 
-These scripts are used for AWS CloudWatch monitoring.
+The following scripts collect OpenShift statistics and feed AWS CloudWatch metrics.
 
-broker_custom_metrics:
+It was tested only on Openshift Origin Release 1 under RHEL 6.4.
+
+Instalation
+---
+
+First you will need an up and running [Openshift Origin installation](http://openshift.github.io/origin/file.install_origin_using_puppet.html).
+
+Install [CloudWatch Command Line Tool](http://aws.amazon.com/developertools/2534) on each of your nodes and broker instances.
+
+Copy the scripts to your cron:
+
+```bash
+$ install cloudwatch/*{sh,rb} /etc/cron.daily/
+```
+
+Available scripts
+---
+
+broker_custom_metrics.rb
 ----
-Retrieve statistcs from oo-stats module and put data to cloudwatch:
 
-Applications: Total applications running on OpenShift Cluster
-Gears: Total gears running on Openshift Cluster
+Retrieve statistcs using oo-stats module. It is intended to run on a broker instance.
 
-Instalation:
+The following metrics should appear on CloudWatch under namespace **Openshift**:
 
-1-) We don't cover install and configuration of OpenShift Origin, you should take a look at the [manual](http://openshift.github.io/origin/file.install_origin_using_puppet.html)
+* Applications: Total applications running on OpenShift Cluster
+* Gears: Total gears running on Openshift Cluster
 
-2-) With your Broker running, install [CloudWatch Command Line Tool](http://aws.amazon.com/developertools/2534)
-
-3-) Copy the script to /etc/cron.daily/ and make it executable 
-
-
-node_custom_metrics:
+node_custom_metrics.sh
 ----
-Retrieve statics via PuppetLabs Facter and put data to cloudwatch:
-Active Gears: Total of gears running on node
 
-Instalation:
+Retrieve statics via PuppetLabs Facter. It is intended to run on a node instance.
 
-1-) We don't cover install and configuration of OpenShift Origin, you should take a look at the [manual](http://openshift.github.io/origin/file.install_origin_using_puppet.html)
+The following metrics should appear on CloudWatch under namespace **Openshift**:
 
-2-) With your Node running, install [CloudWatch Command Line Tool](http://aws.amazon.com/developertools/2534)
-
-3-) Copy the script to /etc/cron.daily/ and make it executable 
-
-
-
-Atention!
-These scripts was only tested on Openshift Origin Release 1 and RHEL 6.4.
+* Active Gears: Total of gears running on node
