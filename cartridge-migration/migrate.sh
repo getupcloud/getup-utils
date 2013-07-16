@@ -17,12 +17,20 @@ OPTIONS:
    -n      Application namespace
    -m      Application name
    -c      Cartridge Type
+   -u 		 DB Username (Required for database cartridges)
+   -p      DB Password (Required for database cartridges)
 EOF
 }
 
 migrate_common()
 {
 
+
+
+	#enable cgroups
+	echo
+	echo "Enabling Cgroups..."
+	/usr/bin/oo-cgroup-enable -c $APP_UUID
 
 	cd /var/lib/openshift/$APP_UUID
 
@@ -53,6 +61,7 @@ migrate_common()
 	echo "Fixing git hooks..."
 	echo "gear prereceive" > /var/lib/openshift/$APP_UUID/git/${APP_NAME}.git/hooks/pre-receive
 	echo "gear postreceive" > /var/lib/openshift/$APP_UUID/git/${APP_NAME}.git/hooks/post-receive
+
 }
 
 
@@ -162,6 +171,96 @@ migrate_mysql()
 	fi 
 }
 
+migrate_postgresql() {
+
+	cd /var/lib/openshift/$APP_UUID
+	
+	if [ -d postgresql-8.4 ]; then
+
+		#save the old ip configuration due grant access
+		echo
+		echo "Saving old postgresql internal ip..."
+		old_postgresql_ip=$(<.env/OPENSHIFT_POSTGRESQL_DB_HOST)
+
+
+		#remove pgpass
+		echo
+		echo "Removing old pgpass file..."
+		rm -f .pgpass
+
+		#remove old env vars
+		echo
+		echo "Cleaning up old env vars..."
+		pushd .env
+		openshift_postgresql_db_log_dir=$(<OPENSHIFT_POSTGRESQL_DB_LOG_DIR)
+		openshift_postgresql_db_password=$(<OPENSHIFT_POSTGRESQL_DB_PASSWORD)
+		openshift_postgresql_db_socket=$(<OPENSHIFT_POSTGRESQL_DB_SOCKET)
+		openshift_postgresql_db_url=$(<OPENSHIFT_POSTGRESQL_DB_URL)
+		openshift_postgresql_db_username=$(<OPENSHIFT_POSTGRESQL_DB_USERNAME)
+
+
+		rm -f OPENSHIFT_POSTGRESQL_DB_LOG_DIR
+		rm -f OPENSHIFT_POSTGRESQL_DB_PASSWORD
+		rm -f OPENSHIFT_POSTGRESQL_DB_SOCKET
+		rm -f OPENSHIFT_POSTGRESQL_DB_URL
+		rm -f OPENSHIFT_POSTGRESQL_DB_USERNAME
+
+		popd
+
+		echo
+		echo "Creating postgresql-8.4 v2 cartridge..."
+		if [ ! -d ${OPENSHIFT_BASEDIR}/$APP_UUID/postgresql ]; then
+			oo-cartridge --with-container-uuid $APP_UUID --action add --with-cartridge-name postgresql-8.4
+		fi
+
+		echo
+		echo "Stopping gear..."
+		oo-admin-ctl-gears stopgear 51e57e8f1d40f028fd000002
+
+		echo 
+		echo "Moving data dir..."
+		if [ -d postgresql-8.4/data ]; then
+			if [ -d postgresql/data ]; then 
+				mv postgresql/data postgresql/data_
+			fi
+			cp -af postgresql-8.4/data postgresql/
+		fi
+
+		echo
+		echo "Setting up conf files..."
+
+		echo ".pgpass..."
+		cat << EOF > .pgpass
+*:*:*:${openshift_postgresql_db_username}:${openshift_postgresql_db_password}
+EOF
+
+		echo "pg_hba.conf..."
+		cp -af postgresql/data_/pg_hba.conf postgresql/data/
+
+		echo "postgresql.conf..."
+		cp -af postgresql/data_/postgresql.conf postgresql/data/
+
+		#keep username and password
+		echo
+		echo "Setting username and password..."
+		
+		echo $openshift_postgresql_db_username  > postgresql/env/OPENSHIFT_POSTGRESQL_DB_USERNAME
+		echo $openshift_postgresql_db_username  > postgresql/env/PGUSER
+		echo $openshift_postgresql_db_password > postgresql/env/OPENSHIFT_POSTGRESQL_DB_PASSWORD
+		echo $openshift_postgresql_db_url > postgresql/env/OPENSHIFT_POSTGRESQL_DB_URL
+
+			#clean up old php cartridge
+	if [ -d postgresql-8.4 ]; then
+		rm -Rf postgresql-8.4
+	fi
+	else
+		echo
+		echo "No postgresql-8.4 v1 cartridge detected! Nothing to do."
+		exit 1
+fi 
+
+}
+
 while :
 do
 	case $1 in
@@ -183,6 +282,14 @@ do
 			;;
 		-c)
 			CARTRIDGE=$2
+			shift 2
+			;;
+		-u)
+			DBUSERNAME=$2
+			shift 2
+			;;
+		-p)
+			DBPASSWORD=$2
 			shift 2
 			;;
 		*)
@@ -211,6 +318,12 @@ if [ ! "$CARTRIDGE" ]; then
 		exit 1
 fi
 
+#if [ "$CARTRIDGE" == "postgresql-8.4" ] || [ "$CARTRIDGE" == "mysql-5.1" ] || [ "$CARTRIDGE" == "mongodb-2.2" ]; then
+#		if [ ! "$DBUSERNAME" ] || [ ! "$DBUSERNAME" ];
+#			echo "ERROR: DBUSERNAME or DBPASSWORD not given. See --help"
+#		fi
+#fi
+
 case $CARTRIDGE in
 	php-5.3)
 		migrate_common
@@ -218,6 +331,9 @@ case $CARTRIDGE in
 		;;
 	mysql-5.1)
 		migrate_mysql
+		;;
+	postgresql-8.4)
+		migrate_postgresql
 		;;
 	*)
 		echo "Invalid cartridge type."
