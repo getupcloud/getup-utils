@@ -75,6 +75,12 @@ migrate_php()
 		echo
 		echo "PHP-5.3 v1 cartridge detected..."
 
+
+		#remove old env var
+		pushd .env
+		[ -f OPENSHIFT_PHP_LOG_DIR ] && rm -f OPENSHIFT_PHP_LOG_DIR
+		popd
+
 		#Php-5.3 v1 cartridges upgrade.
 		echo
 		echo "Creating php-5.3 v2 cartridge..."
@@ -82,11 +88,11 @@ migrate_php()
 			oo-cartridge --with-container-uuid $APP_UUID --action add --with-cartridge-name php-5.3
 		fi
 
-		#remove old env var
-		[ -f OPENSHIFT_PHP_LOG_DIR ] && rm -f OPENSHIFT_PHP_LOG_DIR
+		echo
+		echo "Stopping gear..."
+		oo-admin-ctl-gears stopgear $APP_UUID
 
 		#clean up old php cartridge
-
 		if [ -d php-5.3 ]; then
 			rm -Rf php-5.3
 		fi
@@ -112,12 +118,36 @@ migrate_mysql()
 		echo "Saving old mysql internal ip..."
 		old_mysql_ip=$(<.env/OPENSHIFT_MYSQL_DB_HOST)
 
+				#remove old env vars
+		echo
+		echo "Cleaning up old env vars..."
+		pushd .env
+
+		openshift_mysql_db_log_dir=$(<OPENSHIFT_MYSQL_DB_LOG_DIR)
+		openshift_mysql_db_password=$(<OPENSHIFT_MYSQL_DB_PASSWORD)
+		openshift_mysql_db_socket=$(<OPENSHIFT_MYSQL_DB_SOCKET)
+		openshift_mysql_db_url=$(<OPENSHIFT_MYSQL_DB_URL)
+		openshift_mysql_db_username=$(<OPENSHIFT_MYSQL_DB_USERNAME)
+
+
+		[ -f OPENSHIFT_MYSQL_DB_LOG_DIR ] && rm -f OPENSHIFT_MYSQL_DB_LOG_DIR
+		[ -f OPENSHIFT_MYSQL_DB_PASSWORD ] && rm -f OPENSHIFT_MYSQL_DB_PASSWORD
+		[ -f OPENSHIFT_MYSQL_DB_URL ] && rm -f OPENSHIFT_MYSQL_DB_URL
+		[ -f OPENSHIFT_MYSQL_DB_SOCKET ] && rm -f OPENSHIFT_MYSQL_DB_SOCKET
+		[ -f OPENSHIFT_MYSQL_DB_USERNAME ] && rm -f OPENSHIFT_MYSQL_DB_USERNAME
+
+		popd
+
 
 		echo
 		echo "Creating mysql-5.1 v2 cartridge..."
 		if [ ! -d ${OPENSHIFT_BASEDIR}/$APP_UUID/mysql ]; then
 			oo-cartridge --with-container-uuid $APP_UUID --action add --with-cartridge-name mysql-5.1
 		fi
+
+		echo
+		echo "Stopping gear..."
+		oo-admin-ctl-gears stopgear $APP_UUID
 
 		#save new ip configuration. NOTE this is pretty ugly since there's no way to figure out what is the new ip until run oo-cartridge 
 		echo
@@ -142,28 +172,15 @@ migrate_mysql()
 		#keep username and password
 		echo
 		echo "Setting username and password..."
-		if [ -f ${OPENSHIFT_BASEDIR}/$APP_UUID/.env/OPENSHIFT_MYSQL_DB_USERNAME ] && [ -f ${OPENSHIFT_BASEDIR}/$APP_UUID/.env/OPENSHIFT_MYSQL_DB_PASSWORD ]; then
-			cat .env/OPENSHIFT_MYSQL_DB_USERNAME > mysql/env/OPENSHIFT_MYSQL_DB_USERNAME
-			cat .env/OPENSHIFT_MYSQL_DB_PASSWORD > mysql/env/OPENSHIFT_MYSQL_DB_PASSWORD
-		fi
-
-
-		#remove old env vars
-		echo
-		echo "Cleaning up old env vars..."
-		pushd .env
-		rm -f OPENSHIFT_MYSQL_DB_LOG_DIR
-		rm -f OPENSHIFT_MYSQL_DB_PASSWORD
-		rm -f OPENSHIFT_MYSQL_DB_URL
-		rm -f OPENSHIFT_MYSQL_DB_SOCKET
-		rm -f OPENSHIFT_MYSQL_DB_USERNAME
-
-		popd
+		echo $openshift_mysql_db_username > mysql/env/OPENSHIFT_MYSQL_DB_USERNAME
+		echo $openshift_mysql_db_password > mysql/env/OPENSHIFT_MYSQL_DB_PASSWORD
+		
 
 		#clean up old php cartridge
 		if [ -d mysql-5.1 ]; then
 			rm -Rf mysql-5.1
 		fi
+
 	else
 		echo
 		echo "No mysql-5.1 v1 cartridge detected! Nothing to do."
@@ -176,12 +193,6 @@ migrate_postgresql() {
 	cd /var/lib/openshift/$APP_UUID
 	
 	if [ -d postgresql-8.4 ]; then
-
-		#save the old ip configuration due grant access
-		echo
-		echo "Saving old postgresql internal ip..."
-		old_postgresql_ip=$(<.env/OPENSHIFT_POSTGRESQL_DB_HOST)
-
 
 		#remove pgpass
 		echo
@@ -199,11 +210,11 @@ migrate_postgresql() {
 		openshift_postgresql_db_username=$(<OPENSHIFT_POSTGRESQL_DB_USERNAME)
 
 
-		rm -f OPENSHIFT_POSTGRESQL_DB_LOG_DIR
-		rm -f OPENSHIFT_POSTGRESQL_DB_PASSWORD
-		rm -f OPENSHIFT_POSTGRESQL_DB_SOCKET
-		rm -f OPENSHIFT_POSTGRESQL_DB_URL
-		rm -f OPENSHIFT_POSTGRESQL_DB_USERNAME
+		[ -f OPENSHIFT_POSTGRESQL_DB_LOG_DIR ] && rm -f OPENSHIFT_POSTGRESQL_DB_LOG_DIR
+		[ -f OPENSHIFT_POSTGRESQL_DB_PASSWORD ] && rm -f OPENSHIFT_POSTGRESQL_DB_PASSWORD
+		[ -f OPENSHIFT_POSTGRESQL_DB_SOCKET ] && rm -f OPENSHIFT_POSTGRESQL_DB_SOCKET
+		[ -f OPENSHIFT_POSTGRESQL_DB_URL ] && rm -f OPENSHIFT_POSTGRESQL_DB_URL
+		[ -f OPENSHIFT_POSTGRESQL_DB_USERNAME ] && rm -f OPENSHIFT_POSTGRESQL_DB_USERNAME
 
 		popd
 
@@ -215,7 +226,7 @@ migrate_postgresql() {
 
 		echo
 		echo "Stopping gear..."
-		oo-admin-ctl-gears stopgear 51e57e8f1d40f028fd000002
+		oo-admin-ctl-gears stopgear $APP_UUID
 
 		echo 
 		echo "Moving data dir..."
@@ -259,6 +270,69 @@ EOF
 		exit 1
 fi 
 
+}
+
+
+migrate_mongodb() {
+
+	cd /var/lib/openshift/$APP_UUID
+	
+	if [ -d mongodb-2.2 ]; then
+
+		#remove old env vars
+		echo
+		echo "Cleaning up old env vars..."
+		pushd .env
+
+		openshift_mongo_db_log_dir=$(<OPENSHIFT_MONGODB_DB_LOG_DIR)
+		openshift_mongo_db_password=$(<OPENSHIFT_MONGODB_DB_PASSWORD)
+		openshift_mongo_db_url=$(<OPENSHIFT_MONGODB_DB_URL)
+		openshift_mongo_db_username=$(<OPENSHIFT_MONGODB_DB_USERNAME)
+
+
+		[ -f OPENSHIFT_MONGODB_DB_LOG_DIR ] && rm -f OPENSHIFT_MONGODB_DB_LOG_DIR
+		[ -f OPENSHIFT_MONGODB_DB_PASSWORD ] && rm -f OPENSHIFT_MONGODB_DB_PASSWORD
+		[ -f OPENSHIFT_MONGODB_DB_URL ] && rm -f OPENSHIFT_MONGODB_DB_URL
+		[ -f OPENSHIFT_MONGODB_DB_USERNAME ] && rm -f OPENSHIFT_MONGODB_DB_USERNAME
+
+		popd		
+
+		echo
+		echo "Creating mongodb-2.2 v2 cartridge..."
+		if [ ! -d ${OPENSHIFT_BASEDIR}/$APP_UUID/mongodb ]; then
+			oo-cartridge --with-container-uuid $APP_UUID --action add --with-cartridge-name mongodb-2.2
+		fi
+
+		echo
+		echo "Stopping gear..."
+		oo-admin-ctl-gears stopgear $APP_UUID
+
+		echo 
+		echo "Moving data dir..."
+		if [ -d mongodb-2.2/data ]; then
+			if [ -d mongodb/data ]; then 
+				rm -Rf mongodb/data
+			fi
+			cp -af mongodb-2.2/data mongodb/
+		fi	
+
+		#keep username and password
+		echo
+		echo "Setting username and password..."
+		echo $openshift_mongo_db_username > mongodb/env/OPENSHIFT_MONGODB_DB_USERNAME
+		echo $openshift_mongo_db_password > mongodb/env/OPENSHIFT_MONGODB_DB_PASSWORD
+		echo $openshift_mongo_db_url > mongodb/env/OPENSHIFT_MONGODB_DB_URL
+		
+		#clean up old php cartridge
+		if [ -d mongodb-2.2 ]; then
+			rm -Rf mongodb-2.2
+		fi
+
+	else
+		echo
+		echo "No mongodb-2.2 v1 cartridge detected! Nothing to do."
+		exit 1
+	fi 
 }
 
 while :
@@ -318,11 +392,6 @@ if [ ! "$CARTRIDGE" ]; then
 		exit 1
 fi
 
-#if [ "$CARTRIDGE" == "postgresql-8.4" ] || [ "$CARTRIDGE" == "mysql-5.1" ] || [ "$CARTRIDGE" == "mongodb-2.2" ]; then
-#		if [ ! "$DBUSERNAME" ] || [ ! "$DBUSERNAME" ];
-#			echo "ERROR: DBUSERNAME or DBPASSWORD not given. See --help"
-#		fi
-#fi
 
 case $CARTRIDGE in
 	php-5.3)
@@ -334,6 +403,9 @@ case $CARTRIDGE in
 		;;
 	postgresql-8.4)
 		migrate_postgresql
+		;;
+	mongodb-2.2)
+		migrate_mongodb
 		;;
 	*)
 		echo "Invalid cartridge type."
