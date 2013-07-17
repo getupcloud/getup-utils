@@ -92,7 +92,7 @@ migrate_php()
 		echo "Stopping gear..."
 		oo-admin-ctl-gears stopgear $APP_UUID
 
-		#clean up old php cartridge
+		#clean up old cartridge
 		if [ -d php-5.3 ]; then
 			rm -Rf php-5.3
 		fi
@@ -176,7 +176,7 @@ migrate_mysql()
 		echo $openshift_mysql_db_password > mysql/env/OPENSHIFT_MYSQL_DB_PASSWORD
 		
 
-		#clean up old php cartridge
+		#clean up old cartridge
 		if [ -d mysql-5.1 ]; then
 			rm -Rf mysql-5.1
 		fi
@@ -260,7 +260,7 @@ EOF
 		echo $openshift_postgresql_db_password > postgresql/env/OPENSHIFT_POSTGRESQL_DB_PASSWORD
 		echo $openshift_postgresql_db_url > postgresql/env/OPENSHIFT_POSTGRESQL_DB_URL
 
-			#clean up old php cartridge
+			#clean up old cartridge
 	if [ -d postgresql-8.4 ]; then
 		rm -Rf postgresql-8.4
 	fi
@@ -323,7 +323,7 @@ migrate_mongodb() {
 		echo $openshift_mongo_db_password > mongodb/env/OPENSHIFT_MONGODB_DB_PASSWORD
 		echo $openshift_mongo_db_url > mongodb/env/OPENSHIFT_MONGODB_DB_URL
 		
-		#clean up old php cartridge
+		#clean up old cartridge
 		if [ -d mongodb-2.2 ]; then
 			rm -Rf mongodb-2.2
 		fi
@@ -333,6 +333,39 @@ migrate_mongodb() {
 		echo "No mongodb-2.2 v1 cartridge detected! Nothing to do."
 		exit 1
 	fi 
+}
+
+
+migrate_phpmyadmin() {
+
+	if [ -d phpmyadmin-3.4 ]; then
+		#remove old env vars
+		echo
+		echo "Cleaning up old env vars..."
+		pushd .env
+
+		[ -f OPENSHIFT_PHPMYADMIN_IP ] && rm -f OPENSHIFT_PHPMYADMIN_IP
+		[ -f OPENSHIFT_PHPMYADMIN_LOG_DIR ] && rm -f OPENSHIFT_PHPMYADMIN_LOG_DIR
+		[ -f OPENSHIFT_PHPMYADMIN_PORT ] && rm -f OPENSHIFT_PHPMYADMIN_PORT
+
+		popd
+
+		echo
+		echo "Creating phpmyadmin v2 cartridge..."
+		if [ ! -d ${OPENSHIFT_BASEDIR}/$APP_UUID/phpmyadmin ]; then
+			oo-cartridge --with-container-uuid $APP_UUID --action add --with-cartridge-name phpmyadmin-3.4
+		fi		
+
+
+		#clean up old cartridge
+		if [ -d phpmyadmin-3.4 ]; then
+			rm -Rf phpmyadmin-3.4
+		fi
+	else
+		echo
+		echo "No phpmyadmin-3.4 v1 cartridge detected! Nothing to do."
+		exit 1		
+	fi
 }
 
 while :
@@ -406,6 +439,9 @@ case $CARTRIDGE in
 		;;
 	mongodb-2.2)
 		migrate_mongodb
+		;;
+	phpmyadmin-3.4)
+		migrate_phpmyadmin
 		;;
 	*)
 		echo "Invalid cartridge type."
