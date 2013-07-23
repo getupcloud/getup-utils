@@ -40,6 +40,7 @@ migrate_common()
 	echo
 	echo "Removing old env vars..."
 	[ -f USER_VARS ] && rm -f USER_VARS
+	[ -d .uservars ] && rm -Rf .uservars
 	[ -f OPENSHIFT_INTERNAL_IP ] && rm -f OPENSHIFT_INTERNAL_IP
 	[ -f OPENSHIFT_INTERNAL_PORT ] && rm -f OPENSHIFT_INTERNAL_PORT
 
@@ -65,27 +66,75 @@ migrate_common()
 }
 
 
-migrate_php()
+migrate_web()
 
 {
 
 	cd /var/lib/openshift/$APP_UUID
 	
-	if [ -d php-5.3 ]; then
-		echo
-		echo "PHP-5.3 v1 cartridge detected..."
+	v2_cart_name=$(echo $1 | cut -d- -f 1)
 
+	if [ -d $1 ]; then
+		echo
+		echo "$1 v1 cartridge detected..."
 
 		#remove old env var
 		pushd .env
-		[ -f OPENSHIFT_PHP_LOG_DIR ] && rm -f OPENSHIFT_PHP_LOG_DIR
+		case $1 in
+			php-5.3)
+				[ -f OPENSHIFT_PHP_LOG_DIR ] && rm -f OPENSHIFT_PHP_LOG_DIR
+				;;
+			python-2.6)
+				[ -f OPENSHIFT_PYTHON_LOG_DIR ] && rm -f OPENSHIFT_PYTHON_LOG_DIR
+				;;
+			python-2.7)
+				[ -f OPENSHIFT_PYTHON_LOG_DIR ] && rm -f OPENSHIFT_PYTHON_LOG_DIR
+				[ -f OPENSHIFT_SYNC_GEARS_DIRS ] && rm -f OPENSHIFT_SYNC_GEARS_DIRS
+				;;
+			ruby-1.8)
+				[ -f OPENSHIFT_RUBY_LOG_DIR ] && rm -f OPENSHIFT_RUBY_LOG_DIR
+				;;
+			ruby-1.9)
+				[ -f OPENSHIFT_RUBY_LOG_DIR ] && rm -f OPENSHIFT_RUBY_LOG_DIR
+				[ -f MANPATH ] && rm -f MANPATH
+				[ -f LD_LIBRARY_PATH ] && rm -f LD_LIBRARY_PATH
+				;;
+			nodejs-0.6)
+				[ -f OPENSHIFT_NODEJS_LOG_DIR ] && rm -f OPENSHIFT_NODEJS_LOG_DIR
+				;;
+			jbossews-1.0)
+				[ -f OPENSHIFT_JBOSSEWS_LOG_DIR ] && rm -f OPENSHIFT_JBOSSEWS_LOG_DIR
+				[ -f M2_HOME ] && rm -f M2_HOME
+				[ -f JAVA_HOME ] && rm -f JAVA_HOME
+				;;
+			jbossews-2.0)
+				[ -f OPENSHIFT_JBOSSEWS_LOG_DIR ] && rm -f OPENSHIFT_JBOSSEWS_LOG_DIR
+				[ -f M2_HOME ] && rm -f M2_HOME
+				[ -f JAVA_HOME ] && rm -f JAVA_HOME
+				;;
+		esac
 		popd
 
-		#Php-5.3 v1 cartridges upgrade.
+
+		#Remove old python directoy before add new one
+		if [ $1 = 'python-2.6' ] || [ $1 = 'python-2.7' ]; then
+			rm -Rf $1
+		fi
+
+		#WEb cartridges upgrade.
 		echo
-		echo "Creating php-5.3 v2 cartridge..."
-		if [ ! -d ${OPENSHIFT_BASEDIR}/$APP_UUID/php ]; then
-			oo-cartridge --with-container-uuid $APP_UUID --action add --with-cartridge-name php-5.3
+		echo "Creating $1 v2 cartridge..."
+		if [ ! -d ${OPENSHIFT_BASEDIR}/$APP_UUID/${v2_cart_name} ]; then
+			oo-cartridge --with-container-uuid $APP_UUID --action add --with-cartridge-name $1
+		fi
+
+
+		#Virtual env should be recreated
+		if [ $1 = 'python-2.6' ] || [ $1 = 'python-2.7' ]; then
+		echo 
+		echo "Running postreceive for virtualenv..."
+		#	/usr/sbin/oo-su $APP_UUID -c gear postreceive
+		 /usr/sbin/oo-su $APP_UUID -c /usr/bin/gear postreceive
 		fi
 
 		echo
@@ -93,14 +142,12 @@ migrate_php()
 		oo-admin-ctl-gears stopgear $APP_UUID
 
 		#clean up old cartridge
-		if [ -d php-5.3 ]; then
-			rm -Rf php-5.3
-		fi
-		echo
-		echo "All good!"
+		if [ -d $1 ]; then
+			rm -Rf $1 && echo; echo "All good!"
+		fi 
 	else 
 		echo
-		echo "No php-5.3 v1 cartridge detected! Nothing to do."
+		echo "No $1 v1 cartridge detected! Nothing to do."
 		exit 1
 	fi
 }
@@ -429,8 +476,36 @@ fi
 case $CARTRIDGE in
 	php-5.3)
 		migrate_common
-		migrate_php
+		migrate_web php-5.3
 		;;
+	python-2.6)
+		migrate_common
+		migrate_web python-2.6
+		;;
+	python-2.7)
+		migrate_common
+		migrate_web python-2.7
+		;;
+	nodejs-0.6)
+		migrate_common
+		migrate_web nodejs-0.6
+		;;		
+	ruby-1.8)
+		migrate_common
+		migrate_web ruby-1.8
+		;;
+	ruby-1.9)
+		migrate_common
+		migrate_web ruby-1.9
+		;;
+	jbossews-1.0)
+		migrate_common
+		migrate_web jbossews-1.0
+		;;
+	jbossews-2.0)
+		migrate_common
+		migrate_web jbossews-2.0
+		;;						
 	mysql-5.1)
 		migrate_mysql
 		;;
