@@ -3,6 +3,7 @@
 set -e
 
 OPENSHIFT_BASEDIR=/var/lib/openshift
+CLEANUP=0
 
 usage()
 {
@@ -17,8 +18,7 @@ OPTIONS:
    -n      Application namespace
    -m      Application name
    -c      Cartridge Type
-   -u 		 DB Username (Required for database cartridges)
-   -p      DB Password (Required for database cartridges)
+   -z      Clean up v1 cartridge directory (default no)
 EOF
 }
 
@@ -35,14 +35,14 @@ migrate_common()
 	cd /var/lib/openshift/$APP_UUID
 
 
-	pushd .env
+	cd .env
 	#remove old env vars
 	echo
 	echo "Removing old env vars..."
 	[ -f USER_VARS ] && rm -f USER_VARS
 	[ -d .uservars ] && rm -Rf .uservars
-	[ -f OPENSHIFT_INTERNAL_IP ] && rm -f OPENSHIFT_INTERNAL_IP
-	[ -f OPENSHIFT_INTERNAL_PORT ] && rm -f OPENSHIFT_INTERNAL_PORT
+	#[ -f OPENSHIFT_INTERNAL_IP ] && rm -f OPENSHIFT_INTERNAL_IP
+	#[ -f OPENSHIFT_INTERNAL_PORT ] && rm -f OPENSHIFT_INTERNAL_PORT
 
 	#convert vars for new model
 	echo
@@ -55,7 +55,13 @@ migrate_common()
 	echo -n  $APP_NAMESPACE > OPENSHIFT_NAMESPACE
 	chcon -u system_u -r object_r -t openshift_var_lib_t *
 
-	popd
+	#Log env_vars
+	echo
+	echo "Logging env vars..."
+	for i in *; do echo -n "${i}:"; cat $i; echo; done
+
+	cd - 
+
 
 	#fix git hooks
 	echo
@@ -73,13 +79,14 @@ migrate_web()
 	cd /var/lib/openshift/$APP_UUID
 	
 	v2_cart_name=$(echo $1 | cut -d- -f 1)
+	cap_v2_cart_name=$(echo $v2_cart_name | tr '[a-z]' '[A-Z]')
 
-	if [ -d $1 ]; then
+	if [ -d $1 ] || [ -d "nodejs-0.6" ]; then
 		echo
 		echo "$1 v1 cartridge detected..."
 
 		#remove old env var
-		pushd .env
+		cd .env
 		case $1 in
 			php-5.3)
 				[ -f OPENSHIFT_PHP_LOG_DIR ] && rm -f OPENSHIFT_PHP_LOG_DIR
@@ -99,7 +106,7 @@ migrate_web()
 				[ -f MANPATH ] && rm -f MANPATH
 				[ -f LD_LIBRARY_PATH ] && rm -f LD_LIBRARY_PATH
 				;;
-			nodejs-0.6)
+			nodejs-0.10)
 				[ -f OPENSHIFT_NODEJS_LOG_DIR ] && rm -f OPENSHIFT_NODEJS_LOG_DIR
 				;;
 			jbossews-1.0)
@@ -112,8 +119,16 @@ migrate_web()
 				[ -f M2_HOME ] && rm -f M2_HOME
 				[ -f JAVA_HOME ] && rm -f JAVA_HOME
 				;;
+			diy-0.1)
+				[ -f OPENSHIFT_DIY_LOG_DIR ] && rm -f OPENSHIFT_DIY_LOG_DIR
+				;;
+			haproxy-1.4)
+				[ -f OPENSHIFT_HAPROXY_LOG_DIR ] && rm -f OPENSHIFT_HAPROXY_LOG_DIR
+				old_haproxy_ip=$(<OPENSHIFT_HAPROXY_INTERNAL_IP)
+				old_haproxy_status_ip=$(<OPENSHIFT_HAPROXY_STATUS_IP)
+				;;
 		esac
-		popd
+		cd -
 
 
 		#Remove old python directoy before add new one
@@ -121,13 +136,22 @@ migrate_web()
 			rm -Rf $1
 		fi
 
-		#WEb cartridges upgrade.
+		#Web cartridges upgrade.
 		echo
 		echo "Creating $1 v2 cartridge..."
 		if [ ! -d ${OPENSHIFT_BASEDIR}/$APP_UUID/${v2_cart_name} ]; then
 			oo-cartridge --with-container-uuid $APP_UUID --action add --with-cartridge-name $1
 		fi
 
+		#Keep old env vars for ip and port
+
+		if [ ! $1 = 'haproxy-1.4' ]; then
+		echo
+		echo "Keeping old env vars for ip and port..."
+		set -x
+		[ -f .env/OPENSHIFT_${cap_v2_cart_name}_IP ] && cat .env/OPENSHIFT_${cap_v2_cart_name}_IP > .env/OPENSHIFT_INTERNAL_IP
+		[ -f .env/OPENSHIFT_${cap_v2_cart_name}_PORT ] && cat .env/OPENSHIFT_${cap_v2_cart_name}_PORT > .env/OPENSHIFT_INTERNAL_PORT	
+		fi
 
 		#Virtual env should be recreated
 		if [ $1 = 'python-2.6' ] || [ $1 = 'python-2.7' ]; then
@@ -137,12 +161,61 @@ migrate_web()
 		 /usr/sbin/oo-su $APP_UUID -c /usr/bin/gear postreceive
 		fi
 
+		if [ $1 = 'nodejs-0.10' ]; then
+			echo
+			echo "Installing modules for nodejs..."
+			/usr/sbin/oo-su $APP_UUID -c "rm -Rf ~/app-root/repo/node_modules; ~/nodejs/bin/control build"
+		fi
+
+		if [ $1 = 'haproxy-1.4' ]; then
+
+				#keep ssh keys
+				[ -f haproxy-1.4/.ssh/haproxy_id_rsa ] && cat haproxy-1.4/.ssh/haproxy_id_rsa > .openshift_ssh/id_rsa
+				[ -f haproxy-1.4/.ssh/haproxy_id_rsa.pub ] && cat haproxy-1.4/.ssh/haproxy_id_rsa.pub > .openshift_ssh/id_rsa.pub
+
+				#keep gear_registry
+				[ -f haproxy-1.4/conf/gear-registry.db ] && cat haproxy-1.4/conf/gear-registry.db > haproxy/conf/gear-registry.db
+
+
+				#config file
+				new_haproxy_ip=$(<.env/OPENSHIFT_HAPROXY_IP)
+				new_haproxy_status_ip=$(<.env/OPENSHIFT_HAPROXY_STATUS_IP)
+
+				[ -f haproxy-1.4/conf/haproxy.cfg ] && cat haproxy-1.4/conf/haproxy.cfg > haproxy/conf/haproxy.cfg
+
+				#fix config file
+
+				sed -i "s/${old_haproxy_ip}/${new_haproxy_ip}/g" haproxy/conf/haproxy.cfg
+				sed -i "s/${old_haproxy_status_ip}/${new_haproxy_status_ip}/g" haproxy/conf/haproxy.cfg
+
+		fi
+
+		#fix local-gear endpoint
+
+		if [ -d haproxy -a ! $1 = 'haproxy-1.4' ]; then
+
+
+			#get local gear ip and port
+			local_ip=$(<.env/OPENSHIFT_INTERNAL_IP)
+			local_port=$(<.env/OPENSHIFT_INTERNAL_PORT)
+
+			local_ep=$local_ip:$local_port
+
+			#fix config file
+	    sed -i "/\s*server\s*local-gear\s.*/d" haproxy/conf/haproxy.cfg
+	    echo "	server local-gear $local_ep maxconn 2 check fall 2 rise 3 inter 2000 cookie local-$APP_UUID" >> haproxy/conf/haproxy.cfg
+
+	    sed -i "s/haproxy-1.4/haproxy/g" haproxy/conf/haproxy.cfg
+
+	    [ -f .env/OPENSHIFT_PRIMARY_CARTRIDGE_DIR ] && sed -i "s/haproxy/${v2_cart_name}/" .env/OPENSHIFT_PRIMARY_CARTRIDGE_DIR 
+		fi
+
 		echo
 		echo "Stopping gear..."
 		oo-admin-ctl-gears stopgear $APP_UUID
 
 		#clean up old cartridge
-		if [ -d $1 ]; then
+		if [ -d $1 -a -n $CLEANUP ]; then
 			rm -Rf $1 && echo; echo "All good!"
 		fi 
 	else 
@@ -158,7 +231,7 @@ migrate_mysql()
 
 	cd /var/lib/openshift/$APP_UUID
 
-	if [ -d mysql-5.1 ]; then
+	if [ -d mysql-5.1 -a -n $CLEANUP ]; then
 
 		#save the old ip configuration due grant access
 		echo
@@ -168,7 +241,7 @@ migrate_mysql()
 				#remove old env vars
 		echo
 		echo "Cleaning up old env vars..."
-		pushd .env
+		cd .env
 
 		openshift_mysql_db_log_dir=$(<OPENSHIFT_MYSQL_DB_LOG_DIR)
 		openshift_mysql_db_password=$(<OPENSHIFT_MYSQL_DB_PASSWORD)
@@ -183,7 +256,7 @@ migrate_mysql()
 		[ -f OPENSHIFT_MYSQL_DB_SOCKET ] && rm -f OPENSHIFT_MYSQL_DB_SOCKET
 		[ -f OPENSHIFT_MYSQL_DB_USERNAME ] && rm -f OPENSHIFT_MYSQL_DB_USERNAME
 
-		popd
+		cd -
 
 
 		echo
@@ -224,7 +297,7 @@ migrate_mysql()
 		
 
 		#clean up old cartridge
-		if [ -d mysql-5.1 ]; then
+		if [ -d mysql-5.1 -a -n $CLEANUP ]; then
 			rm -Rf mysql-5.1
 		fi
 
@@ -239,7 +312,7 @@ migrate_postgresql() {
 
 	cd /var/lib/openshift/$APP_UUID
 	
-	if [ -d postgresql-8.4 ]; then
+	if [ -d postgresql-8.4 -a -n $CLEANUP ]; then
 
 		#remove pgpass
 		echo
@@ -249,7 +322,7 @@ migrate_postgresql() {
 		#remove old env vars
 		echo
 		echo "Cleaning up old env vars..."
-		pushd .env
+		cd .env
 		openshift_postgresql_db_log_dir=$(<OPENSHIFT_POSTGRESQL_DB_LOG_DIR)
 		openshift_postgresql_db_password=$(<OPENSHIFT_POSTGRESQL_DB_PASSWORD)
 		openshift_postgresql_db_socket=$(<OPENSHIFT_POSTGRESQL_DB_SOCKET)
@@ -263,7 +336,7 @@ migrate_postgresql() {
 		[ -f OPENSHIFT_POSTGRESQL_DB_URL ] && rm -f OPENSHIFT_POSTGRESQL_DB_URL
 		[ -f OPENSHIFT_POSTGRESQL_DB_USERNAME ] && rm -f OPENSHIFT_POSTGRESQL_DB_USERNAME
 
-		popd
+		cd -
 
 		echo
 		echo "Creating postgresql-8.4 v2 cartridge..."
@@ -308,7 +381,7 @@ EOF
 		echo $openshift_postgresql_db_url > postgresql/env/OPENSHIFT_POSTGRESQL_DB_URL
 
 			#clean up old cartridge
-	if [ -d postgresql-8.4 ]; then
+	if [ -d postgresql-8.4 -a -n $CLEANUP ]; then
 		rm -Rf postgresql-8.4
 	fi
 	else
@@ -329,7 +402,7 @@ migrate_mongodb() {
 		#remove old env vars
 		echo
 		echo "Cleaning up old env vars..."
-		pushd .env
+		cd .env
 
 		openshift_mongo_db_log_dir=$(<OPENSHIFT_MONGODB_DB_LOG_DIR)
 		openshift_mongo_db_password=$(<OPENSHIFT_MONGODB_DB_PASSWORD)
@@ -342,7 +415,7 @@ migrate_mongodb() {
 		[ -f OPENSHIFT_MONGODB_DB_URL ] && rm -f OPENSHIFT_MONGODB_DB_URL
 		[ -f OPENSHIFT_MONGODB_DB_USERNAME ] && rm -f OPENSHIFT_MONGODB_DB_USERNAME
 
-		popd		
+		cd -		
 
 		echo
 		echo "Creating mongodb-2.2 v2 cartridge..."
@@ -371,7 +444,7 @@ migrate_mongodb() {
 		echo $openshift_mongo_db_url > mongodb/env/OPENSHIFT_MONGODB_DB_URL
 		
 		#clean up old cartridge
-		if [ -d mongodb-2.2 ]; then
+		if [ -d mongodb-2.2 -a -n $CLEANUP ]; then
 			rm -Rf mongodb-2.2
 		fi
 
@@ -389,13 +462,13 @@ migrate_phpmyadmin() {
 		#remove old env vars
 		echo
 		echo "Cleaning up old env vars..."
-		pushd .env
+		cd .env
 
 		[ -f OPENSHIFT_PHPMYADMIN_IP ] && rm -f OPENSHIFT_PHPMYADMIN_IP
 		[ -f OPENSHIFT_PHPMYADMIN_LOG_DIR ] && rm -f OPENSHIFT_PHPMYADMIN_LOG_DIR
 		[ -f OPENSHIFT_PHPMYADMIN_PORT ] && rm -f OPENSHIFT_PHPMYADMIN_PORT
 
-		popd
+		cd -
 
 		echo
 		echo "Creating phpmyadmin v2 cartridge..."
@@ -405,7 +478,7 @@ migrate_phpmyadmin() {
 
 
 		#clean up old cartridge
-		if [ -d phpmyadmin-3.4 ]; then
+		if [ -d phpmyadmin-3.4 -a -n $CLEANUP ]; then
 			rm -Rf phpmyadmin-3.4
 		fi
 	else
@@ -438,13 +511,8 @@ do
 			CARTRIDGE=$2
 			shift 2
 			;;
-		-u)
-			DBUSERNAME=$2
-			shift 2
-			;;
-		-p)
-			DBPASSWORD=$2
-			shift 2
+		-z)
+			CLEANUP=1
 			;;
 		*)
 			break
@@ -474,6 +542,10 @@ fi
 
 
 case $CARTRIDGE in
+	haproxy-1.4)
+		migrate_common
+		migrate_web haproxy-1.4
+		;;
 	php-5.3)
 		migrate_common
 		migrate_web php-5.3
@@ -486,9 +558,9 @@ case $CARTRIDGE in
 		migrate_common
 		migrate_web python-2.7
 		;;
-	nodejs-0.6)
+	nodejs-0.10)
 		migrate_common
-		migrate_web nodejs-0.6
+		migrate_web nodejs-0.10
 		;;		
 	ruby-1.8)
 		migrate_common
@@ -505,6 +577,13 @@ case $CARTRIDGE in
 	jbossews-2.0)
 		migrate_common
 		migrate_web jbossews-2.0
+		;;
+	diy-0.1)
+		migrate_common
+		migrate_web diy-0.1
+		;;
+	cron-1.4)
+		migrate_web cron-1.4
 		;;						
 	mysql-5.1)
 		migrate_mysql
