@@ -22,15 +22,18 @@ OPTIONS:
 EOF
 }
 
-migrate_common()
+enable_cgroups()
 {
-
-
-
 	#enable cgroups
 	echo
 	echo "Enabling Cgroups..."
-	/usr/bin/oo-cgroup-enable -c $APP_UUID
+	/usr/bin/oo-cgroup-enable -c $APP_UUID	
+}
+
+migrate_common()
+{
+
+	enable_cgroups	
 
 	cd /var/lib/openshift/$APP_UUID
 
@@ -66,9 +69,12 @@ migrate_common()
 	#fix git hooks
 	echo
 	echo "Fixing git hooks..."
-	echo "gear prereceive" > /var/lib/openshift/$APP_UUID/git/${APP_NAME}.git/hooks/pre-receive
-	echo "gear postreceive" > /var/lib/openshift/$APP_UUID/git/${APP_NAME}.git/hooks/post-receive
 
+	[ -f ${OPENSHIFT_BASEDIR}/${APP_UUID}/git/${APP_NAME}.git/hooks/pre-receive ] 	&& echo "gear prereceive" 	> ${OPENSHIFT_BASEDIR}/${APP_UUID}/git/${APP_NAME}.git/hooks/pre-receive
+	[ -f ${OPENSHIFT_BASEDIR}/${APP_UUID}/git/${APP_NAME}.git/hooks/post-receive ] 	&& echo "gear postreceive" 	> ${OPENSHIFT_BASEDIR}/${APP_UUID}/git/${APP_NAME}.git/hooks/post-receive
+
+	[ -f ${OPENSHIFT_BASEDIR}/${APP_UUID}/git/${APP_UUID}.git/hooks/pre-receive ] 	&& echo "gear prereceive" 	> ${OPENSHIFT_BASEDIR}/${APP_UUID}/git/${APP_UUID}.git/hooks/pre-receive
+	[ -f ${OPENSHIFT_BASEDIR}/${APP_UUID}/git/${APP_UUID}.git/hooks/post-receive ] 	&& echo "gear postreceive" 	> ${OPENSHIFT_BASEDIR}/${APP_UUID}/git/${APP_UUID}.git/hooks/post-receive
 }
 
 
@@ -129,7 +135,6 @@ migrate_web()
 				;;
 		esac
 		cd -
-
 
 		#Remove old python directoy before add new one
 		if [ $1 = 'python-2.6' ] || [ $1 = 'python-2.7' ]; then
@@ -228,33 +233,19 @@ migrate_web()
 migrate_mysql()
 {
 
+	if [ -d mysql-5.1 ]; then
 
-	cd /var/lib/openshift/$APP_UUID
-
-	if [ -d mysql-5.1 -a -n $CLEANUP ]; then
-
-		#save the old ip configuration due grant access
-		echo
-		echo "Saving old mysql internal ip..."
-		old_mysql_ip=$(<.env/OPENSHIFT_MYSQL_DB_HOST)
-
-				#remove old env vars
-		echo
-		echo "Cleaning up old env vars..."
 		cd .env
 
-		openshift_mysql_db_log_dir=$(<OPENSHIFT_MYSQL_DB_LOG_DIR)
-		openshift_mysql_db_password=$(<OPENSHIFT_MYSQL_DB_PASSWORD)
-		openshift_mysql_db_socket=$(<OPENSHIFT_MYSQL_DB_SOCKET)
-		openshift_mysql_db_url=$(<OPENSHIFT_MYSQL_DB_URL)
-		openshift_mysql_db_username=$(<OPENSHIFT_MYSQL_DB_USERNAME)
+		#save the old ip configuration due grant access
 
-
-		[ -f OPENSHIFT_MYSQL_DB_LOG_DIR ] && rm -f OPENSHIFT_MYSQL_DB_LOG_DIR
-		[ -f OPENSHIFT_MYSQL_DB_PASSWORD ] && rm -f OPENSHIFT_MYSQL_DB_PASSWORD
-		[ -f OPENSHIFT_MYSQL_DB_URL ] && rm -f OPENSHIFT_MYSQL_DB_URL
-		[ -f OPENSHIFT_MYSQL_DB_SOCKET ] && rm -f OPENSHIFT_MYSQL_DB_SOCKET
-		[ -f OPENSHIFT_MYSQL_DB_USERNAME ] && rm -f OPENSHIFT_MYSQL_DB_USERNAME
+	
+		[ -f OPENSHIFT_MYSQL_DB_LOG_DIR ] 	&& openshift_mysql_db_log_dir=$(<OPENSHIFT_MYSQL_DB_LOG_DIR) 		&& rm -f OPENSHIFT_MYSQL_DB_LOG_DIR
+		[ -f OPENSHIFT_MYSQL_DB_HOST ] 			&& old_mysql_ip=$(<OPENSHIFT_MYSQL_DB_HOST) 										&& rm OPENSHIFT_MYSQL_DB_HOST		
+		[ -f OPENSHIFT_MYSQL_DB_PASSWORD ] 	&& openshift_mysql_db_password=$(<OPENSHIFT_MYSQL_DB_PASSWORD) 	&& rm OPENSHIFT_MYSQL_DB_PASSWORD
+		[ -f OPENSHIFT_MYSQL_DB_URL ] 			&& openshift_mysql_db_socket=$(<OPENSHIFT_MYSQL_DB_SOCKET) 			&& rm OPENSHIFT_MYSQL_DB_URL
+		[ -f OPENSHIFT_MYSQL_DB_SOCKET ] 		&& openshift_mysql_db_url=$(<OPENSHIFT_MYSQL_DB_URL) 						&& rm OPENSHIFT_MYSQL_DB_SOCKET
+		[ -f OPENSHIFT_MYSQL_DB_USERNAME ] 	&& openshift_mysql_db_username=$(<OPENSHIFT_MYSQL_DB_USERNAME) 	&& rm OPENSHIFT_MYSQL_DB_USERNAME
 
 		cd -
 
@@ -297,10 +288,9 @@ migrate_mysql()
 		
 
 		#clean up old cartridge
-		if [ -d mysql-5.1 -a -n $CLEANUP ]; then
+		if [ -d mysql-5.1 -a $CLEANUP = 1 ]; then
 			rm -Rf mysql-5.1
 		fi
-
 	else
 		echo
 		echo "No mysql-5.1 v1 cartridge detected! Nothing to do."
@@ -310,9 +300,8 @@ migrate_mysql()
 
 migrate_postgresql() {
 
-	cd /var/lib/openshift/$APP_UUID
 	
-	if [ -d postgresql-8.4 -a -n $CLEANUP ]; then
+	if [ -d postgresql-8.4 -a $CLEANUP = 1 ]; then
 
 		#remove pgpass
 		echo
@@ -323,18 +312,12 @@ migrate_postgresql() {
 		echo
 		echo "Cleaning up old env vars..."
 		cd .env
-		openshift_postgresql_db_log_dir=$(<OPENSHIFT_POSTGRESQL_DB_LOG_DIR)
-		openshift_postgresql_db_password=$(<OPENSHIFT_POSTGRESQL_DB_PASSWORD)
-		openshift_postgresql_db_socket=$(<OPENSHIFT_POSTGRESQL_DB_SOCKET)
-		openshift_postgresql_db_url=$(<OPENSHIFT_POSTGRESQL_DB_URL)
-		openshift_postgresql_db_username=$(<OPENSHIFT_POSTGRESQL_DB_USERNAME)
-
-
-		[ -f OPENSHIFT_POSTGRESQL_DB_LOG_DIR ] && rm -f OPENSHIFT_POSTGRESQL_DB_LOG_DIR
-		[ -f OPENSHIFT_POSTGRESQL_DB_PASSWORD ] && rm -f OPENSHIFT_POSTGRESQL_DB_PASSWORD
-		[ -f OPENSHIFT_POSTGRESQL_DB_SOCKET ] && rm -f OPENSHIFT_POSTGRESQL_DB_SOCKET
-		[ -f OPENSHIFT_POSTGRESQL_DB_URL ] && rm -f OPENSHIFT_POSTGRESQL_DB_URL
-		[ -f OPENSHIFT_POSTGRESQL_DB_USERNAME ] && rm -f OPENSHIFT_POSTGRESQL_DB_USERNAME
+		
+		[ -f OPENSHIFT_POSTGRESQL_DB_LOG_DIR ] 	&& openshift_postgresql_db_log_dir=$(<OPENSHIFT_POSTGRESQL_DB_LOG_DIR) 		&& rm -f OPENSHIFT_POSTGRESQL_DB_LOG_DIR
+		[ -f OPENSHIFT_POSTGRESQL_DB_PASSWORD ] && openshift_postgresql_db_log_dir=$(<OPENSHIFT_POSTGRESQL_DB_LOG_DIR) 		&& rm -f OPENSHIFT_POSTGRESQL_DB_PASSWORD
+		[ -f OPENSHIFT_POSTGRESQL_DB_SOCKET ] 	&& openshift_postgresql_db_socket=$(<OPENSHIFT_POSTGRESQL_DB_SOCKET) 			&& rm -f OPENSHIFT_POSTGRESQL_DB_SOCKET
+		[ -f OPENSHIFT_POSTGRESQL_DB_URL ] 			&& openshift_postgresql_db_url=$(<OPENSHIFT_POSTGRESQL_DB_URL) 						&& rm -f OPENSHIFT_POSTGRESQL_DB_URL
+		[ -f OPENSHIFT_POSTGRESQL_DB_USERNAME ] && openshift_postgresql_db_username=$(<OPENSHIFT_POSTGRESQL_DB_USERNAME) 	&& rm -f OPENSHIFT_POSTGRESQL_DB_USERNAME
 
 		cd -
 
@@ -377,12 +360,13 @@ EOF
 		
 		echo $openshift_postgresql_db_username  > postgresql/env/OPENSHIFT_POSTGRESQL_DB_USERNAME
 		echo $openshift_postgresql_db_username  > postgresql/env/PGUSER
-		echo $openshift_postgresql_db_password > postgresql/env/OPENSHIFT_POSTGRESQL_DB_PASSWORD
-		echo $openshift_postgresql_db_url > postgresql/env/OPENSHIFT_POSTGRESQL_DB_URL
+		echo $openshift_postgresql_db_password 	> postgresql/env/OPENSHIFT_POSTGRESQL_DB_PASSWORD
+		echo $openshift_postgresql_db_url 			> postgresql/env/OPENSHIFT_POSTGRESQL_DB_URL
 
 			#clean up old cartridge
-	if [ -d postgresql-8.4 -a -n $CLEANUP ]; then
+	if [ -d postgresql-8.4 -a $CLEANUP = 1 ]; then
 		rm -Rf postgresql-8.4
+		rm -Rf postgresql/data_
 	fi
 	else
 		echo
@@ -395,7 +379,6 @@ fi
 
 migrate_mongodb() {
 
-	cd /var/lib/openshift/$APP_UUID
 	
 	if [ -d mongodb-2.2 ]; then
 
@@ -404,16 +387,10 @@ migrate_mongodb() {
 		echo "Cleaning up old env vars..."
 		cd .env
 
-		openshift_mongo_db_log_dir=$(<OPENSHIFT_MONGODB_DB_LOG_DIR)
-		openshift_mongo_db_password=$(<OPENSHIFT_MONGODB_DB_PASSWORD)
-		openshift_mongo_db_url=$(<OPENSHIFT_MONGODB_DB_URL)
-		openshift_mongo_db_username=$(<OPENSHIFT_MONGODB_DB_USERNAME)
-
-
-		[ -f OPENSHIFT_MONGODB_DB_LOG_DIR ] && rm -f OPENSHIFT_MONGODB_DB_LOG_DIR
-		[ -f OPENSHIFT_MONGODB_DB_PASSWORD ] && rm -f OPENSHIFT_MONGODB_DB_PASSWORD
-		[ -f OPENSHIFT_MONGODB_DB_URL ] && rm -f OPENSHIFT_MONGODB_DB_URL
-		[ -f OPENSHIFT_MONGODB_DB_USERNAME ] && rm -f OPENSHIFT_MONGODB_DB_USERNAME
+		[ -f OPENSHIFT_MONGODB_DB_LOG_DIR ]		&& openshift_mongo_db_log_dir=$(<OPENSHIFT_MONGODB_DB_LOG_DIR) 		&& rm -f OPENSHIFT_MONGODB_DB_LOG_DIR
+		[ -f OPENSHIFT_MONGODB_DB_PASSWORD ]	&& openshift_mongo_db_password=$(<OPENSHIFT_MONGODB_DB_PASSWORD)  && rm -f OPENSHIFT_MONGODB_DB_PASSWORD
+		[ -f OPENSHIFT_MONGODB_DB_URL ]				&& openshift_mongo_db_url=$(<OPENSHIFT_MONGODB_DB_URL) 						&& rm -f OPENSHIFT_MONGODB_DB_URL
+		[ -f OPENSHIFT_MONGODB_DB_USERNAME ]	&& openshift_mongo_db_username=$(<OPENSHIFT_MONGODB_DB_USERNAME)  && rm -f OPENSHIFT_MONGODB_DB_USERNAME
 
 		cd -		
 
@@ -444,7 +421,7 @@ migrate_mongodb() {
 		echo $openshift_mongo_db_url > mongodb/env/OPENSHIFT_MONGODB_DB_URL
 		
 		#clean up old cartridge
-		if [ -d mongodb-2.2 -a -n $CLEANUP ]; then
+		if [ -d mongodb-2.2 -a $CLEANUP = 1 ]; then
 			rm -Rf mongodb-2.2
 		fi
 
@@ -586,12 +563,15 @@ case $CARTRIDGE in
 		migrate_web cron-1.4
 		;;						
 	mysql-5.1)
+		migrate_common
 		migrate_mysql
 		;;
 	postgresql-8.4)
+		migrate_common
 		migrate_postgresql
 		;;
 	mongodb-2.2)
+		migrate_common
 		migrate_mongodb
 		;;
 	phpmyadmin-3.4)
