@@ -139,7 +139,7 @@ migrate_web()
 		cd -
 
 		#Remove old python directoy before add new one
-		if [ $1 = 'python-2.6' ] || [ $1 = 'python-2.7' ]; then
+		if [ $1 = 'python-2.6' -o $1 = 'python-2.7' ]; then
 			rm -Rf $1
 		fi
 
@@ -160,24 +160,35 @@ migrate_web()
 		fi
 
 		#Virtual env should be recreated
-		if [ $1 = 'python-2.6' ] || [ $1 = 'python-2.7' ]; then
+		if [ $1 = 'python-2.6' -o $1 = 'python-2.7' ]; then
 		echo 
 		echo "Running postreceive for virtualenv..."
-		#	/usr/sbin/oo-su $APP_UUID -c gear postreceive
-		 /usr/sbin/oo-su $APP_UUID -c /usr/bin/gear postreceive
+			/usr/sbin/oo-su $APP_UUID -c "/usr/bin/gear build && /usr/bin/gear deploy" || true
 		fi
 
-		#Virtual env should be recreated
+		if [ $1 = 'ruby-1.9' -o  $1 = 'ruby-1.8' ]; then
+			echo
+			echo "Rebuilding ruby gear..."
+			/usr/sbin/oo-su $APP_UUID -c "/usr/bin/gear deploy" || true
+		fi
+		
+		if [ $1 = 'jbossews-1.0' -o  $1 = 'jbossews-2.0' ]; then
+			echo
+			echo "Rebuilding ruby gear..."
+			/usr/sbin/oo-su $APP_UUID -c "/usr/bin/gear deploy" || true
+		fi
+
+		#php gear rebuild
 		if [ $1 = 'php-5.3' ]; then
 		echo 
 		echo "Rebuilding gear..."
-			 /usr/sbin/oo-su $APP_UUID -c /usr/bin/gear deploy || true
+			 /usr/sbin/oo-su $APP_UUID -c "/usr/bin/gear deploy" || true
 		fi
 
 		if [ $1 = 'nodejs-0.10' ]; then
 			echo
 			echo "Installing modules for nodejs..."
-			/usr/sbin/oo-su $APP_UUID -c "rm -Rf ~/app-root/repo/node_modules; ~/nodejs/bin/control build"
+			/usr/sbin/oo-su $APP_UUID -c "rm -Rf ~/app-root/repo/node_modules; /usr/bin/gear deploy" || true
 		fi
 
 		if [ $1 = 'haproxy-1.4' ]; then
@@ -419,7 +430,7 @@ migrate_mongodb() {
 		echo "Moving data dir..."
 		if [ -d mongodb-2.2/data ]; then
 			if [ -d mongodb/data ]; then 
-				rm -Rf mongodb/data
+				mv mongodb/data mongodb/data_
 			fi
 			cp -af mongodb-2.2/data mongodb/
 		fi	
@@ -434,6 +445,7 @@ migrate_mongodb() {
 		#clean up old cartridge
 		if [ -d mongodb-2.2 -a $CLEANUP = 1 ]; then
 			rm -Rf mongodb-2.2
+			rm -Rf mongo/data_
 		fi
 
 	else
