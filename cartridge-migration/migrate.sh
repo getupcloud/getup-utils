@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e
+#set -e
 
 OPENSHIFT_BASEDIR=/var/lib/openshift
 CLEANUP=0
@@ -70,10 +70,13 @@ migrate_common()
 	echo
 	echo "Fixing git hooks..."
 
+
   if [ -d ${OPENSHIFT_BASEDIR}/${APP_UUID}/git/${APP_NAME}.git ]; then
 		[ -f ${OPENSHIFT_BASEDIR}/${APP_UUID}/git/${APP_NAME}.git/hooks/pre-receive ] 	&& echo "gear prereceive" 	> ${OPENSHIFT_BASEDIR}/${APP_UUID}/git/${APP_NAME}.git/hooks/pre-receive
 		[ -f ${OPENSHIFT_BASEDIR}/${APP_UUID}/git/${APP_NAME}.git/hooks/post-receive ] 	&& echo "gear postreceive" 	> ${OPENSHIFT_BASEDIR}/${APP_UUID}/git/${APP_NAME}.git/hooks/post-receive
-	else
+	fi	
+	
+	if [ -d ${OPENSHIFT_BASEDIR}/${APP_UUID}/git/${APP_UUID}.git ]; then
 		[ -f ${OPENSHIFT_BASEDIR}/${APP_UUID}/git/${APP_UUID}.git/hooks/pre-receive ] 	&& echo "gear prereceive" 	> ${OPENSHIFT_BASEDIR}/${APP_UUID}/git/${APP_UUID}.git/hooks/pre-receive
 		[ -f ${OPENSHIFT_BASEDIR}/${APP_UUID}/git/${APP_UUID}.git/hooks/post-receive ] 	&& echo "gear postreceive" 	> ${OPENSHIFT_BASEDIR}/${APP_UUID}/git/${APP_UUID}.git/hooks/post-receive
 	fi
@@ -134,13 +137,14 @@ migrate_web()
 				[ -f OPENSHIFT_HAPROXY_LOG_DIR ] && rm -f OPENSHIFT_HAPROXY_LOG_DIR
 				old_haproxy_ip=$(<OPENSHIFT_HAPROXY_INTERNAL_IP)
 				old_haproxy_status_ip=$(<OPENSHIFT_HAPROXY_STATUS_IP)
+				old_primary_cartridge=$(<OPENSHIFT_PRIMARY_CARTRIDGE_DIR)
 				;;
 		esac
 		cd -
 
-		#Remove old python directoy before add new one
+		#Move old python directoy before add new one
 		if [ $1 = 'python-2.6' -o $1 = 'python-2.7' ]; then
-			rm -Rf $1
+			mv $1 OLDPYTHON
 		fi
 
 		#Web cartridges upgrade.
@@ -152,18 +156,18 @@ migrate_web()
 
 		#Keep old env vars for ip and port
 
-		if [ ! $1 = 'haproxy-1.4' ]; then
+		if [ ! $1 = 'haproxy-1.4' ]; then 
 		echo
 		echo "Keeping old env vars for ip and port..."
 		[ -f .env/OPENSHIFT_${cap_v2_cart_name}_IP ] && cat .env/OPENSHIFT_${cap_v2_cart_name}_IP > .env/OPENSHIFT_INTERNAL_IP
 		[ -f .env/OPENSHIFT_${cap_v2_cart_name}_PORT ] && cat .env/OPENSHIFT_${cap_v2_cart_name}_PORT > .env/OPENSHIFT_INTERNAL_PORT	
 		fi
 
-		#Virtual env should be recreated
+		#Virtual env should be restored
 		if [ $1 = 'python-2.6' -o $1 = 'python-2.7' ]; then
 		echo 
 		echo "Running postreceive for virtualenv..."
-			/usr/sbin/oo-su $APP_UUID -c "/usr/bin/gear build && /usr/bin/gear deploy" || true
+			mv OLDPYTHON/virtenv python/virtenv
 		fi
 
 		if [ $1 = 'ruby-1.9' -o  $1 = 'ruby-1.8' ]; then
@@ -209,29 +213,17 @@ migrate_web()
 
 				#fix config file
 
-				sed -i "s/${old_haproxy_ip}/${new_haproxy_ip}/g" haproxy/conf/haproxy.cfg
-				sed -i "s/${old_haproxy_status_ip}/${new_haproxy_status_ip}/g" haproxy/conf/haproxy.cfg
+				
+				sed -i "s/listen\s*stats\s.*/listen stats ${new_haproxy_status_ip}:8080/" haproxy/conf/haproxy.cfg
+				
+				sed -i "s/server\s*filler\s.*/server filler ${new_haproxy_status_ip}:8080 backup/" haproxy/conf/haproxy.cfg
 
-		fi
+				sed -i "s/listen\s*express\s.*/listen express ${new_haproxy_ip}:8080/" haproxy/conf/haproxy.cfg
 
-		#fix local-gear endpoint
+				sed -i "s/haproxy-1.4/haproxy/g" haproxy/conf/haproxy.cfg
 
-		if [ -d haproxy -a ! $1 = 'haproxy-1.4' ]; then
-
-
-			#get local gear ip and port
-			local_ip=$(<.env/OPENSHIFT_INTERNAL_IP)
-			local_port=$(<.env/OPENSHIFT_INTERNAL_PORT)
-
-			local_ep=$local_ip:$local_port
-
-			#fix config file
-	    sed -i "/\s*server\s*local-gear\s.*/d" haproxy/conf/haproxy.cfg
-	    echo "	server local-gear $local_ep maxconn 2 check fall 2 rise 3 inter 2000 cookie local-$APP_UUID" >> haproxy/conf/haproxy.cfg
-
-	    sed -i "s/haproxy-1.4/haproxy/g" haproxy/conf/haproxy.cfg
-
-	    [ -f .env/OPENSHIFT_PRIMARY_CARTRIDGE_DIR ] && sed -i "s/haproxy/${v2_cart_name}/" .env/OPENSHIFT_PRIMARY_CARTRIDGE_DIR 
+				#primary cartrdige should't be haproxy
+				echo $old_primary_cartridge > .env/OPENSHIFT_PRIMARY_CARTRIDGE_DIR	
 		fi
 
 		echo
