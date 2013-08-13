@@ -164,29 +164,10 @@ migrate_web()
 		fi
 
 		#Virtual env should be restored
-		if [ $1 = 'python-2.6' -o $1 = 'python-2.7' ]; then
-		echo 
-		echo "Running postreceive for virtualenv..."
-			mv OLDPYTHON/virtenv python/virtenv
-		fi
-
-		if [ $1 = 'ruby-1.9' -o  $1 = 'ruby-1.8' ]; then
-			echo
-			echo "Rebuilding ruby gear..."
-			/usr/sbin/oo-su $APP_UUID -c "/usr/bin/gear deploy" || true
-		fi
-		
-		if [ $1 = 'jbossews-1.0' -o  $1 = 'jbossews-2.0' ]; then
-			echo
-			echo "Rebuilding ruby gear..."
-			/usr/sbin/oo-su $APP_UUID -c "/usr/bin/gear deploy" || true
-		fi
-
-		#php gear rebuild
-		if [ $1 = 'php-5.3' ]; then
+		if [ $1 = 'python-2.6' -o $1 = 'python-2.7' -o $1 = 'ruby-1.9' -o  $1 = 'ruby-1.8' -o $1 = 'jbossews-1.0' -o  $1 = 'jbossews-2.0' -o $1 = 'php-5.3' ]; then
 		echo 
 		echo "Rebuilding gear..."
-			 /usr/sbin/oo-su $APP_UUID -c "/usr/bin/gear deploy" || true
+			/usr/sbin/oo-su $APP_UUID -c "/usr/bin/gear deploy" || true
 		fi
 
 		if [ $1 = 'nodejs-0.10' ]; then
