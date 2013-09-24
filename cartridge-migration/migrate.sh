@@ -3,7 +3,7 @@
 #set -e
 
 OPENSHIFT_BASEDIR=/var/lib/openshift
-CLEANUP=0
+CLEANUP=1
 
 usage()
 {
@@ -27,7 +27,8 @@ enable_cgroups()
 	#enable cgroups
 	echo
 	echo "Enabling Cgroups..."
-	/usr/bin/oo-cgroup-enable -c $APP_UUID	
+	/usr/bin/oo-cgroup-enable -c $APP_UUID
+	/usr/bin/oo-cgroup-template -c $APP_UUID -t boosted
 }
 
 migrate_common()
@@ -102,6 +103,9 @@ migrate_web()
 			php-5.3)
 				[ -f OPENSHIFT_PHP_LOG_DIR ] && rm -f OPENSHIFT_PHP_LOG_DIR
 				;;
+			perl-5.10)
+				[ -f OPENSHIFT_PERL_LOG_DIR ] && rm -f OPENSHIFT_PERL_LOG_DIR
+				;;
 			python-2.6)
 				[ -f OPENSHIFT_PYTHON_LOG_DIR ] && rm -f OPENSHIFT_PYTHON_LOG_DIR
 				;;
@@ -164,7 +168,7 @@ migrate_web()
 		fi
 
 		#Virtual env should be restored
-		if [ $1 = 'python-2.6' -o $1 = 'python-2.7' -o $1 = 'ruby-1.9' -o  $1 = 'ruby-1.8' -o $1 = 'jbossews-1.0' -o  $1 = 'jbossews-2.0' -o $1 = 'php-5.3' ]; then
+		if [ $1 = 'perl-5.10' -o $1 = 'python-2.6' -o $1 = 'python-2.7' -o $1 = 'ruby-1.9' -o  $1 = 'ruby-1.8' -o $1 = 'jbossews-1.0' -o  $1 = 'jbossews-2.0' -o $1 = 'php-5.3' ]; then
 		echo 
 		echo "Rebuilding gear..."
 			/usr/sbin/oo-su $APP_UUID -c "/usr/bin/gear deploy" || true
@@ -431,7 +435,7 @@ migrate_mongodb() {
 
 migrate_phpmyadmin() {
 
-	if [ -d phpmyadmin-3.4 ]; then
+	if [ -d 'phpmyadmin-3.4' ]; then
 		#remove old env vars
 		echo
 		echo "Cleaning up old env vars..."
@@ -519,6 +523,10 @@ case $CARTRIDGE in
 		migrate_common
 		migrate_web haproxy-1.4
 		;;
+	perl-5.10)
+		migrate_common
+		migrate_web perl-5.10
+		;;
 	php-5.3)
 		migrate_common
 		migrate_web php-5.3
@@ -571,6 +579,7 @@ case $CARTRIDGE in
 		migrate_mongodb
 		;;
 	phpmyadmin-3.4)
+		migrate_common
 		migrate_phpmyadmin
 		;;
 	*)

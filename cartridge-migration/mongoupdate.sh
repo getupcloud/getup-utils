@@ -2,7 +2,7 @@
 
 #mongo update
 
-mongo openshift <<EOF
+mongo $1 <<EOF
 
 db.applications.update(
 { 
