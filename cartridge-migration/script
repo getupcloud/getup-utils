@@ -1,0 +1,164 @@
+#broker http://fpaste.org/33224/76938440/
+
+
+cd /etc/puppet/modules/openshift_origin
+git remote add upstream https://github.com/openshift/puppet-openshift_origin.git
+git checkout master
+git pull upstream
+
+
+
+
+cat << EOF > /etc/yum.repos.d/openshift-origin.repo
+[openshift-origin]
+#baseurl=http://mirror.ops.getupcloud.com/getup-stage/release-2-console/
+baseurl=https://mirror.openshift.com/pub/openshift-origin/release/2/rhel-6/packages/x86_64/
+enabled=1
+gpgcheck=0
+EOF
+
+cat << EOF > /etc/yum.repos.d/openshift-origin-deps.repo
+[openshift-origin-deps]
+#baseurl=https://mirror.openshift.com/pub/openshift-origin/rhel-6/x86_64/  
+baseurl=https://mirror.openshift.com/pub/openshift-origin/release/2/rhel-6/dependencies/x86_64/
+enabled=1
+gpgcheck=0
+EOF
+
+
+
+##### V1
+
+  class { 'openshift_origin' :
+    #The DNS resolvable hostname of this host
+    node_fqdn                  => 'broker.example.com',
+
+    #The domain under which application should be created. Eg: <app>-<namespace>.example.com
+    cloud_domain               => 'example.com',
+
+    #Upstream DNS server.
+    dns_servers                => ['8.8.8.8'],
+
+    enable_network_services    => true,
+    configure_firewall         => true,
+    configure_ntp              => true,
+
+    #Configure the required services
+    configure_activemq         => true,
+    configure_mongodb          => true,
+    configure_named            => true,
+    configure_avahi            => false,
+    configure_console            => false,
+    configure_broker           => true,
+    configure_node             => true,
+
+    #Enable development mode for more verbose logs
+    development_mode           => true,
+
+    #Update the nameserver on this host to point at Bind server
+    update_network_dns_servers => true,
+
+    #Use the nsupdate broker plugin to register application
+    broker_dns_plugin          => 'nsupdate',
+
+    #If installing from a local build, specify the path for Origin RPMs
+    #install_repo               => 'release',
+    #dependencies_repo          => 'release',
+
+
+    #If using BIND, let the broker know what TSIG key to use
+    named_tsig_priv_key         => 'nhcDS9noFxNI6sPjO8ZpG1f1xW8XfA=='
+  }
+
+
+      augeas { 'network':
+          context => '/files/etc/sysconfig/network',
+          changes => "set HOSTNAME ${::openshift_origin::node_fqdn}",
+          onlyif => "match HOSTNAME[.='${::openshift_origin::node_fqdn}'] size == 0",
+          notify => Exec['hostname'],
+      }
+
+      exec { 'hostname':
+          command => "/bin/hostname ${::openshift_origin::node_fqdn}",
+          refreshonly => true,
+      }
+
+      exec { 'resolv':
+        command => "/bin/sed -i 's/172.16.0.23/127.0.0.1/g' /etc/resolv.conf",
+        unless => "/bin/grep 127.0.0.1 /etc/resolv.conf",
+      }
+
+      file { 'express':
+        ensure => present,
+        path => '/root/.openshift/express.conf',
+        content => "
+  libra_server=${::openshift_origin::node_fqdn}
+  default_rhlogin=admin
+  use_authorization_tokens=true
+  insecure=true",
+      }
+
+      exec { 'clean cache':
+        command => "/usr/bin/scl enable ruby193 \" bundle exec rake tmp:clear \"",
+        cwd => '/var/www/openshift/broker',
+      }
+    exec { 'register dns':
+    command => "oo-register-dns --with-node-hostname broker -n $ec2_public_ipv4 -s 127.0.0.1",
+    path => '/usr/bin:/usr/sbin:/sbin:/bin',
+  }
+
+
+  exec { 'tomcat7':
+    command => 'wget http://archive.apache.org/dist/tomcat/tomcat-7/v7.0.40/bin/apache-tomcat-7.0.40.tar.gz && \
+                tar zxf /tmp/apache-tomcat-7.0.40.tar.gz -C /usr/share && \
+                mv /usr/share/apache-tomcat-7.0.40 /usr/share/tomcat7 ',
+    path => '/usr/bin:/usr/sbin:/sbin:/bin',
+    cwd => '/tmp',
+    creates => '/usr/share/tomcat7',
+    logoutput => 'on_failure',
+    notify => Exec['jboss'],
+  }
+
+  exec { 'tomcat6':
+    command => 'wget http://archive.apache.org/dist/tomcat/tomcat-6/v6.0.37/bin/apache-tomcat-6.0.37.tar.gz && \
+                tar zxf /tmp/apache-tomcat-6.0.37.tar.gz -C /usr/share && \
+                mv /usr/share/apache-tomcat-6.0.37 /usr/share/tomcat6 ',
+    path => '/usr/bin:/usr/sbin:/sbin:/bin',
+    cwd => '/tmp',
+    creates => '/usr/share/tomcat6',
+    logoutput => 'on_failure',
+    notify => Exec['jboss'],
+  }
+
+
+  exec { 'jboss':
+    command => "yum install -y http://mirror.ops.getupcloud.com/getup-stage/getup-openshift-origin-release-1/noarch/openshift-origin-cartridge-jbossews-1.0-1.7.4-1.git.99.a068cef.el6.noarch.rpm http://mirror.ops.getupcloud.com/getup-stage/getup-openshift-origin-release-1/noarch/openshift-origin-cartridge-jbossews-2.0-1.4.4-1.git.108.a068cef.el6.noarch.rpm":
+    path => '/usr/bin:/usr/sbin:/sbin:/bin',
+    refreshonly => true,
+  }
+
+
+
+
+
+
+cd ~
+puppet apply origin.pp -v
+
+  yum update -y openshift* rubygem-openshift* ruby193-ruby-wrapper ruby193-ruby selinux*
+
+yum -y install http://mirror.ops.getupcloud.com/getup-stage/getup-openshift-origin-release-1/noarch/openshift-origin-cartridge-jbossews-1.0-1.7.4-1.git.99.a068cef.el6.noarch.rpm http://mirror.ops.getupcloud.com/getup-stage/getup-openshift-origin-release-1/noarch/openshift-origin-cartridge-jbossews-2.0-1.4.4-1.git.108.a068cef.el6.noarch.rpm
+yum -y install http://mirror.ops.getupcloud.com/getup-stage/getup-openshift-origin-release-1/noarch/openshift-origin-cartridge-jbossews-2.0-1.4.4-1.git.108.a068cef.el6.noarch.rpm
+
+
+cd /opt/rh/ruby193/root/usr/share/gems/gems/openshift-origin-controller-1.13.0.1/app/models/
+rm -f application.rb
+wget https://raw.github.com/openshift/origin-server/7d51cad00d0acb1915e781c04e4ac240712aba47/controller/app/models/application.rb
+
+cd /usr/sbin/
+rm -f oo-admin-ctl-app
+wget https://raw.github.com/openshift/origin-server/7d51cad00d0acb1915e781c04e4ac240712aba47/broker-util/oo-admin-ctl-app
+chmod 755 oo-admin-ctl-app
+cd
+
+
