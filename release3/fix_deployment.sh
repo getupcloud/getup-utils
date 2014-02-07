@@ -3,6 +3,7 @@
 
 GEAR_BASE_DIR=/var/lib/openshift
 
+
 for i in ${GEAR_BASE_DIR}/*; do
 
 	pushd $i
