@@ -8,6 +8,9 @@ for i in ${GEAR_BASE_DIR}/*; do
 
 	pushd $i
 
+
+	echo "512" > .env/OPENSHIFT_GEAR_MEMORY_MB
+
 	owner=`ls -l | grep app-root | awk '{print $4}'`
 
 	mkdir app-deployments
@@ -30,6 +33,4 @@ for i in ${GEAR_BASE_DIR}/*; do
 
 	popd
 done
-
-
 

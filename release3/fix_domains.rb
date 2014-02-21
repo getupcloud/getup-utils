@@ -8,8 +8,8 @@ require 'moped'
 
 
 session = Moped::Session.new([ "localhost:27017"])
-session.use "openshift_broker_dev"
-session.login("openshift", "mooo")
+session.use "openshift"
+session.login("openshift", "moo")
 users = session[:cloud_users]
 domains = session[:domains]
 
@@ -24,7 +24,7 @@ users.find.each do |u|
 		if !d['members'].is_a? Array
 			
 			puts "Corrigindo dominio #{d['_id']}"
-			dom.update( "$pushAll" => { members:  [ 
+			session[:domains].where("_id" => d['_id']).update( "$pushAll" => { members:  [ 
 				_id: id,
 				_type: nil ,
 				n: login,
@@ -36,12 +36,11 @@ users.find.each do |u|
 				    ]
 				})
 
-			session[:domains].where("_id" = d['_id']).update( "$unset" => { user_ids: ""} )
-			session[:domains].where("_id" = d['_id']).update( "$pushAll" => { allowed_gear_sizes: { 'small' } })
+			session[:domains].where("_id" => d['_id']).update( "$unset" => { user_ids: ""} )
+			session[:domains].where("_id" => d['_id']).update( "$push" => { allowed_gear_sizes: 'small' })
 
 		else 
-			puts "Dominio bom #{m['_id']}"
+			puts "Dominio bom #{d['_id']}"
 		end
-
-	end	
+	}
 end
