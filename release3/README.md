@@ -19,6 +19,7 @@ On node:
  ./fix_deployments.sh
  ./fix_gear_registry.sh
  ./migrate_port_proxy.sh
+ ./fix_rewrite.sh
 ```
 
 Back on broker:
