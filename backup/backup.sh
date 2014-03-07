@@ -13,7 +13,6 @@ DATE=`date +%Y-%m-%d`
 
 mysql() {
 	
-	DB_NAME=$OPENSHIFT_APP_NAME
 	DB_USER=$OPENSHIFT_MYSQL_DB_USERNAME
 	DB_PASS=$OPENSHIFT_MYSQL_DB_PASSWORD
 	DB_HOST=$OPENSHIFT_MYSQL_DB_HOST
@@ -26,8 +25,8 @@ mysql() {
 		mkdir $FINAL_BACKUP_DIR
 	fi
 
-	echo -e "\nBacking up MySQL database $DB_NAME..."
-	if ! mysqldump $DB_NAME $DB_PARAM  -h $OPENSHIFT_MYSQL_DB_HOST -P $OPENSHIFT_MYSQL_DB_PORT -u $DB_USER -p$DB_PASS | gzip > "${FINAL_BACKUP_DIR}${BACKUP_NAME}.sql.gz"; then
+	echo -e "\nBacking up MySQL databases..."
+	if ! mysqldump $DB_PARAM  -h $DB_HOST -P $DB_PORT -u $DB_USER -p$DB_PASS --all-databases | gzip > "${FINAL_BACKUP_DIR}${BACKUP_NAME}.sql.gz"; then
 		echo "[!!ERROR!!] Failed to produce mysql backup database $DB_NAME"
 	fi	 
 
@@ -49,8 +48,8 @@ postgresql() {
 		mkdir $FINAL_BACKUP_DIR
 	fi
  
-	echo -e "\nBacking up PostgreSQL database $DB_NAME..." 
-	if ! pg_dump -Fp -h "$DB_HOST" -U "$DB_USER" -p "$DB_PORT" "$DB_NAME" | gzip > "${FINAL_BACKUP_DIR}${BACKUP_NAME}".sql.gz.in_progress; then
+	echo -e "\nBacking up PostgreSQL databases..." 
+	if ! pg_dumpall -c -h "$DB_HOST" -U "$DB_USER" -p "$DB_PORT" | gzip > "${FINAL_BACKUP_DIR}${BACKUP_NAME}".sql.gz.in_progress; then
 		echo "[!!ERROR!!] Failed to produce postgresql backup database $DB_NAME"
 	else
 		mv "${FINAL_BACKUP_DIR}${BACKUP_NAME}".sql.gz.in_progress "${FINAL_BACKUP_DIR}${BACKUP_NAME}".sql.gz
@@ -74,13 +73,13 @@ mongodb() {
 		mkdir $FINAL_BACKUP_DIR
 	fi
 
-	echo -e "\nBacking up MongoDB database $DB_NAME..."
-	if ! mongodump --host $DB_HOST --port $DB_PORT --username $DB_USER --password $DB_PASS --db $DB_NAME --out $FINAL_BACKUP_DIR > /dev/null; then
+	echo -e "\nBacking up MongoDB databases..."
+	if ! mongodump --host $DB_HOST --port $DB_PORT --username $DB_USER --password $DB_PASS --out "${FINAL_BACKUP_DIR}dump/" > /dev/null; then
 		echo "[!!ERROR!!] Failed to produce mongo backup database $DATABASE"
 	else
 		cd $FINAL_BACKUP_DIR
-		tar cfz "${DB_NAME}-${DATE}.tar.gz" "${DB_NAME}"
-		rm -rf "${FINAL_BACKUP_DIR}${DB_NAME}"
+		tar cfz "${DB_NAME}-${DATE}.tar.gz" dump
+		rm -rf dump
 	fi
 
 	echo -e "\nMongodb Backup Complete!"
