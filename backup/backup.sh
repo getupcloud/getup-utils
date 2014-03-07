@@ -19,7 +19,7 @@ mysql() {
 	DB_PORT=$OPENSHIFT_MYSQL_DB_PORT
 	FINAL_BACKUP_DIR=$BACKUP_DIR"mysql/"
 	DB_PARAM='--add-drop-table --add-locks --extended-insert --single-transaction -quick'
-	BACKUP_NAME="${DB_NAME}-${DATE}"
+	BACKUP_NAME="${all}-${DATE}"
 
 	if [ ! -d  $FINAL_BACKUP_DIR ]; then
 		mkdir $FINAL_BACKUP_DIR
@@ -42,7 +42,7 @@ postgresql() {
 	DB_PASS=$OPENSHIFT_POSTGRESQL_DB_PASSWORD
 	DB_NAME=$OPENSHIFT_APP_NAME
 	FINAL_BACKUP_DIR=$BACKUP_DIR"postgresql/"
-	BACKUP_NAME="${DB_NAME}-${DATE}"
+	BACKUP_NAME="${all}-${DATE}"
  
  	if [ ! -d $FINAL_BACKUP_DIR ]; then
 		mkdir $FINAL_BACKUP_DIR
@@ -67,7 +67,7 @@ mongodb() {
 	DB_PASS=$OPENSHIFT_MONGODB_DB_PASSWORD
 	DB_NAME=$OPENSHIFT_APP_NAME
 	FINAL_BACKUP_DIR=$BACKUP_DIR"mongodb/"
-	BACKUP_NAME="${DB_NAME}-${DATE}"
+	BACKUP_NAME="${all}-${DATE}"
 
 	if [ ! -d $FINAL_BACKUP_DIR ]; then
 		mkdir $FINAL_BACKUP_DIR
