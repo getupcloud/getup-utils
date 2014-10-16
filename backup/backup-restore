@@ -1,0 +1,76 @@
+#!/bin/bash
+
+set -eu
+shopt -s nullglob
+
+BACKUP_DIR=/tmp/x/backup
+
+if ! [ -d "$BACKUP_DIR" ]; then
+	echo No backup found: $BACKUP_DIR
+	exit 0
+fi
+cd $BACKUP_DIR
+
+if [ $# -gt 1 ]; then
+	FILENAME="$1"
+	if [ ! -e "$FILENAME" ]; then
+		echo "Backup file not found: $FILENAME"
+		exit 1
+	fi
+
+	DB=${FILENAME%/*}
+	DB=${DB##*/}
+else
+	select DB in * EXIT; do
+		if ! [ -d "$DB" ]; then
+			[ "$DB" == EXIT ] || echo Invalid database
+			exit 0
+		fi
+		cd $DB
+		break
+	done
+
+	select FILE in *.gz EXIT; do
+		if ! [ -e "$FILE" ]; then
+			[ "$FILE" == EXIT ] || echo Invalid file
+			exit 0
+		fi
+		break
+	done
+
+	FILENAME=$BACKUP_DIR/$DB/$FILE
+fi
+
+if ! [ -e "$FILENAME" ]; then
+	echo  Invalid filename: $FILENAME
+	exit 1
+fi
+
+read  -p "Restore $DB backup from $FILENAME? [y/N]" confirm
+if [ "$confirm" != 'y' -a "$confirm" != 'Y' ]; then
+	exit 0
+fi
+
+function restore_mysql()
+{
+	#TODO
+	#zcat "$1" | 
+}
+
+function restore_postgresql()
+{
+	#TODO
+	#zcat "$1" | psql -h "$OPENSHIFT_POSTGRESQL_DB_HOST" -p "$OPENSHIFT_POSTGRESQL_DB_PORT" -U "$OPENSHIFT_POSTGRESQL_DB_USERNAME"
+}
+
+function restore_mongodb()
+{
+	DUMPDIR=${1%.gz}
+	DUMPDIR=${DUMPDIR##*/}
+	cd $BACKUP_DIR
+	zcat $FILENAME | tar x
+	echo mongorestore -h $OPENSHIFT_MONGODB_DB_HOST --port $OPENSHIFT_MONGODB_DB_PORT -u $OPENSHIFT_MONGODB_DB_USERNAME -p $OPENSHIFT_MONGODB_DB_PASSWORD --drop $DUMPDIR
+}
+
+echo "Restoring $DB backup from $FILENAME ..."
+eval restore_$DB $FILENAME
